@@ -11,8 +11,8 @@ configfile: "config/config.yaml"
 
 samples_df = pd.read_csv("config/samples.tsv", sep="\t")
 
-group_assembly_sample = (
-    samples_df["group"] + "_" + samples_df["assembly"] + "_" + samples_df["sample"]
+assembly_sample = (
+    samples_df["assembly"] + "_" + samples_df["sample"]
 )
 
 
@@ -41,8 +41,8 @@ def get_viral_contigs(wildcards):
     )
     return expand(
         results
-        + "04_VIRUS_IDENTIFICATION/07_combine_outputs/{group_assembly}/combined_viral_contigs.fasta",
-        group_assembly=list(set(virus_identification_report["assembly"])),
+        + "04_VIRUS_IDENTIFICATION/07_combine_outputs/{assembly}/combined_viral_contigs.fasta",
+        assembly=list(set(virus_identification_report["assembly"])),
     )
 
 
@@ -90,7 +90,7 @@ rule dereplicate_viruses:
         # calculate ani and af from blast results
         python {params.blastani_script} -i {params.blast_tsv} -o {params.ani_tsv}
 
-        # cluster phage genomes based on 95% ani and 85% af
+        # dereplicate phage genomes based on 99% ani and 99% af
         python {params.cluster_script} --fna {input} --ani {params.ani_tsv} --out {output} --min_ani {params.min_ani} --min_qcov {params.min_qcov} --min_tcov {params.min_tcov}
         """
 
@@ -112,7 +112,7 @@ rule extract_dereplicated_viruses:
 # -----------------------------------------------------
 # 03 Cluster viruses
 # -----------------------------------------------------
-# cluster viral genomes
+# cluster viral genomes with one another (no external database included)
 rule cluster_viruses:
     input:
         results + "05_VIRUS_CLUSTERING/02_dereplicate_viruses/dereplicated_viruses.fna",
@@ -146,25 +146,25 @@ rule cluster_viruses:
         """
 
 
-# align reads to virus db
+# align reads to external virus db
 rule align_reads_to_virusdb:
     input:
         R1=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{group_assembly_sample}_paired_1.fastq",
+        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_paired_1.fastq",
         R2=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{group_assembly_sample}_paired_2.fastq",
+        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_paired_2.fastq",
         R1S=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{group_assembly_sample}_unmatched_1.fastq",
+        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_unmatched_1.fastq",
         R2S=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{group_assembly_sample}_unmatched_2.fastq",
+        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_unmatched_2.fastq",
         virusdb=config["virus_db"],
     output:
         results
-        + "05_VIRUS_CLUSTERING/03_cluster_viruses/bam_files/{group_assembly_sample}_virus_v_virusdb.bam",
+        + "05_VIRUS_CLUSTERING/03_cluster_viruses/bam_files/{assembly_sample}_virus_v_virusdb.bam",
     params:
         db=results + "05_VIRUS_CLUSTERING/03_cluster_viruses/virusdb",
         sam=results
-        + "05_VIRUS_CLUSTERING/03_cluster_viruses/bam_files/{group_assembly_sample}_virus_v_virusdb.sam",
+        + "05_VIRUS_CLUSTERING/03_cluster_viruses/bam_files/{assembly_sample}_virus_v_virusdb.sam",
     conda:
         "../envs/kneaddata.yml"
     threads: config["virus_clustering"]["blast_threads"]
@@ -188,7 +188,7 @@ rule align_reads_to_virusdb:
         """
 
 
-# build metapop
+# build metapop for analyzing alignments to external genomes
 rule build_metapop:
     output:
         results + "05_VIRUS_CLUSTERING/03_cluster_viruses/metapop_build_complete",
@@ -205,15 +205,15 @@ rule build_metapop:
         """
 
 
-# determine which viruses are present in the sample
+# determine which external viruses are present in the sample
 rule identify_present_viruses:
     input:
         metapop=results
         + "05_VIRUS_CLUSTERING/03_cluster_viruses/metapop_build_complete",
         bam=expand(
             results
-            + "05_VIRUS_CLUSTERING/03_cluster_viruses/bam_files/{group_assembly_sample}_virus_v_virusdb.bam",
-            group_assembly_sample=group_assembly_sample,
+            + "05_VIRUS_CLUSTERING/03_cluster_viruses/bam_files/{assembly_sample}_virus_v_virusdb.bam",
+            assembly_sample=assembly_sample,
         ),
         virusdb=config["virus_db"],
     output:
@@ -236,7 +236,7 @@ rule identify_present_viruses:
         """
 
 
-# filter to keep only blast hits
+# filter to keep only external viruses with substantial coverage/depth
 rule extract_virusdb_hits:
     input:
         virusdb=config["virus_db"],
@@ -253,7 +253,7 @@ rule extract_virusdb_hits:
         "../notebooks/05_extract_virusdb_hits.py.ipynb"
 
 
-# cluster viral genomes with virusdb
+# cluster viral genomes with external virus hits
 rule cluster_viruses_with_virusdb:
     input:
         viruses=results
@@ -299,6 +299,7 @@ rule cluster_viruses_with_virusdb:
         """
 
 
+# determine which clustering input to use (cluster alone or with external database)
 if config["virus_clustering"]["cluster_with_virusdb"]:
     clusters = (
         results
@@ -308,7 +309,7 @@ else:
     clusters = results + "05_VIRUS_CLUSTERING/03_cluster_viruses/virus_clusters.tsv"
 
 
-# extract cluster representatives from clusters
+# extract cluster representatives
 rule extract_cluster_representatives:
     input:
         viruses=results

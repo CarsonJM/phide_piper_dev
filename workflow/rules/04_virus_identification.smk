@@ -33,11 +33,11 @@ report: "report/workflow.rst"
 rule symlink_contigs:
     input:
         lambda wildcards: samples_df[
-            (samples_df["group"] + samples_df["assembly"]) == wildcards.group_assembly
+            (samples_df["assembly"]) == wildcards.assembly
         ]["contigs"].iloc[0],
     output:
         results
-        + "00_INPUT/{group_assembly}"
+        + "00_INPUT/{assembly}"
         + "_"
         + config["read_assembly"]["assembly_output"]
         + ".fasta",
@@ -49,17 +49,17 @@ rule symlink_contigs:
 
 
 # select which contig files to use depending on the files that are input
-if len(config["virus_identification"]["assembled_contigs"]) == 0:
+if config["read_assembly"]["include_assembly_module"]:
     contigs = (
         results
-        + "03_READ_ASSEMBLY/04_contig_length_filter/{group_assembly}_"
+        + "03_READ_ASSEMBLY/04_contig_length_filter/{assembly}_"
         + config["read_assembly"]["assembly_output"]
         + ".fasta",
     )
 else:
     contigs = (
         results
-        + "00_INPUT/{group_assembly}_"
+        + "00_INPUT/{assembly}_"
         + config["read_assembly"]["assembly_output"]
         + ".fasta",
     )
@@ -96,9 +96,9 @@ rule mgv_prodigal:
     input:
         contigs,
     output:
-        mgv_fna=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{group_assembly}.fna",
-        mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{group_assembly}.faa",
-        mgv_ffn=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{group_assembly}.ffn",
+        mgv_fna=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}.fna",
+        mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}.faa",
+        mgv_ffn=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}.ffn",
     conda:
         "../envs/mgv.yml"
     shell:
@@ -116,10 +116,10 @@ rule mgv_prodigal:
 # use hmmsearch to find imgvr HMM hits
 rule mgv_imgvr_hmmsearch:
     input:
-        mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{group_assembly}.faa",
+        mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}.faa",
         imgvr_hmm=resources + "mgv/viral_detection_pipeline/input/imgvr.hmm",
     output:
-        results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_imgvr.out",
+        results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_imgvr.out",
     conda:
         "../envs/mgv.yml"
     threads: config["virus_identification"]["mgv_threads"]
@@ -138,10 +138,10 @@ rule mgv_imgvr_hmmsearch:
 # use hmmsearch to find pfam HMM hits
 rule mgv_pfam_hmmsearch:
     input:
-        mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{group_assembly}.faa",
+        mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}.faa",
         pfam_hmm=resources + "mgv/viral_detection_pipeline/input/pfam.hmm",
     output:
-        results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_pfam.out",
+        results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_pfam.out",
     conda:
         "../envs/mgv.yml"
     threads: config["virus_identification"]["mgv_threads"]
@@ -161,13 +161,13 @@ rule mgv_pfam_hmmsearch:
 rule mgv_count_hmm_hits:
     input:
         contigs=contigs,
-        mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{group_assembly}.faa",
+        mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}.faa",
         mgv_imgvr=results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_imgvr.out",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_imgvr.out",
         mgv_pfam=results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_pfam.out",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_pfam.out",
     output:
-        results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_hmm_hits.tsv",
+        results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_hmm_hits.tsv",
     params:
         mgv_dir=resources + "mgv/viral_detection_pipeline",
     conda:
@@ -191,7 +191,7 @@ rule mgv_virfinder:
         pfam_hmm=resources + "mgv/viral_detection_pipeline/input/pfam.hmm",
         contigs=contigs,
     output:
-        results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_virfinder.tsv",
+        results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_virfinder.tsv",
     params:
         mgv_dir=resources + "mgv/viral_detection_pipeline",
     conda:
@@ -216,10 +216,10 @@ rule mgv_strand_switch:
         imgvr_hmm=resources + "mgv/viral_detection_pipeline/input/imgvr.hmm",
         pfam_hmm=resources + "mgv/viral_detection_pipeline/input/pfam.hmm",
         contigs=contigs,
-        mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{group_assembly}.faa",
+        mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}.faa",
     output:
         results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_strand_switch.tsv",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_strand_switch.tsv",
     params:
         mgv_dir=resources + "mgv/viral_detection_pipeline",
     conda:
@@ -239,14 +239,14 @@ rule mgv_strand_switch:
 rule mgv_master_table:
     input:
         mgv_hmm_hits=results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_hmm_hits.tsv",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_hmm_hits.tsv",
         mgv_vf=results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_virfinder.tsv",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_virfinder.tsv",
         mgv_strand_switch=results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_strand_switch.tsv",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_strand_switch.tsv",
     output:
         results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_master_table.tsv",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_master_table.tsv",
     params:
         mgv_dir=resources + "mgv/viral_detection_pipeline",
     conda:
@@ -265,17 +265,17 @@ rule mgv_master_table:
 # predict viral contigs using HMM hits, strand switch rate, and virfinder results (mgv viral_classify.py script)
 rule mgv_viral_classify:
     input:
-        mgv_fna=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{group_assembly}.fna",
+        mgv_fna=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}.fna",
         mgv_master_table=results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_master_table.tsv",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_master_table.tsv",
     output:
-        fna=results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_final.fna",
-        tsv=results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_final.tsv",
+        fna=results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_final.fna",
+        tsv=results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_final.tsv",
     params:
         mgv_dir=resources + "mgv/viral_detection_pipeline",
-        input_base=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{group_assembly}",
+        input_base=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}",
         output_base=results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_final",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_final",
     conda:
         "../envs/mgv.yml"
     shell:
@@ -338,15 +338,15 @@ rule virsorter:
         vsrm=resources + "virsorter/virsorter-data/VirSorter_Readme.txt",
     output:
         vs_translation=results
-        + "04_VIRUS_IDENTIFICATION/02_virsorter/{group_assembly}/fasta/input_sequences_id_translation.tsv",
+        + "04_VIRUS_IDENTIFICATION/02_virsorter/{assembly}/fasta/input_sequences_id_translation.tsv",
         vs_results=results
-        + "04_VIRUS_IDENTIFICATION/02_virsorter/{group_assembly}/Metric_files/VIRSorter_phage_signal.tab",
+        + "04_VIRUS_IDENTIFICATION/02_virsorter/{assembly}/Metric_files/VIRSorter_phage_signal.tab",
     params:
-        output_dir=results + "04_VIRUS_IDENTIFICATION/02_virsorter/{group_assembly}",
+        output_dir=results + "04_VIRUS_IDENTIFICATION/02_virsorter/{assembly}",
         vs_dir=resources + "virsorter/virsorter-data/",
         extra_args=config["virus_identification"]["virsorter_arguments"],
     log:
-        results + "00_LOGS/04_virus_identification_{group_assembly}.virsorter.log",
+        results + "00_LOGS/04_virus_identification_{assembly}.virsorter.log",
     conda:
         "../envs/virsorter.yml"
     threads: config["virus_identification"]["virsorter_threads"]
@@ -394,10 +394,10 @@ rule virsorter2:
         vs2_db=resources + "virsorter2/Done_all_setup",
     output:
         results
-        + "04_VIRUS_IDENTIFICATION/03_virsorter2/{group_assembly}/final-viral-score.tsv",
+        + "04_VIRUS_IDENTIFICATION/03_virsorter2/{assembly}/final-viral-score.tsv",
     params:
         vs2_db=resources + "virsorter2",
-        vs2_dir=results + "04_VIRUS_IDENTIFICATION/03_virsorter2/{group_assembly}",
+        vs2_dir=results + "04_VIRUS_IDENTIFICATION/03_virsorter2/{assembly}",
         extra_args=config["virus_identification"]["virsorter2_arguments"],
     conda:
         "../envs/virsorter2.yml"
@@ -451,11 +451,11 @@ rule vibrant:
         vb_db=resources + "vibrant/db/databases/VIBRANT_setup.log",
     output:
         results
-        + "04_VIRUS_IDENTIFICATION/04_vibrant/{group_assembly}/VIBRANT_{group_assembly}_contigs/VIBRANT_phages_{group_assembly}_contigs/{group_assembly}_contigs.phages_combined.txt",
+        + "04_VIRUS_IDENTIFICATION/04_vibrant/{assembly}/VIBRANT_{assembly}_contigs/VIBRANT_phages_{assembly}_contigs/{assembly}_contigs.phages_combined.txt",
     params:
         vb_db=resources + "vibrant/db/databases/",
         vb_files=resources + "vibrant/db/files/",
-        vb_dir=results + "04_VIRUS_IDENTIFICATION/04_vibrant/{group_assembly}",
+        vb_dir=results + "04_VIRUS_IDENTIFICATION/04_vibrant/{assembly}",
         extra_args=config["virus_identification"]["vibrant_arguments"],
     conda:
         "../envs/vibrant.yml"
@@ -499,7 +499,7 @@ rule deepvirfinder:
         dvf_script=resources + "deepvirfinder/dvf.py",
     output:
         results
-        + "04_VIRUS_IDENTIFICATION/05_deepvirfinder/{group_assembly}_contigs.fasta_gt1000bp_dvfpred.txt",
+        + "04_VIRUS_IDENTIFICATION/05_deepvirfinder/{assembly}_contigs.fasta_gt1000bp_dvfpred.txt",
     params:
         output_dir=results + "04_VIRUS_IDENTIFICATION/05_deepvirfinder",
         model_dir=resources + "deepvirfinder/models",
@@ -530,7 +530,7 @@ rule customize_virus_headers:
     conda:
         "../envs/jupyter.yml"
     notebook:
-        "../notebooks/customize_virus_headers.py.ipynb"
+        "../notebooks/04_customize_virusdb_headers.py.ipynb"
 
 
 # build kraken database using custom virus database
@@ -558,9 +558,9 @@ rule kraken2:
         contigs=contigs,
     output:
         classification=results
-        + "04_VIRUS_IDENTIFICATION/06_kraken2/{group_assembly}/contigs.kraken2.classification.txt",
+        + "04_VIRUS_IDENTIFICATION/06_kraken2/{assembly}/contigs.kraken2.classification.txt",
         report=results
-        + "04_VIRUS_IDENTIFICATION/06_kraken2/{group_assembly}/kraken2.kreport",
+        + "04_VIRUS_IDENTIFICATION/06_kraken2/{assembly}/kraken2.kreport",
     params:
         db=resources + "virusdb_kraken2db/",
     conda:
@@ -582,10 +582,10 @@ rule kraken2:
 if config["virus_identification"]["run_mgv"]:
     mgv1 = (
         results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_master_table.tsv",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_master_table.tsv",
     )
     mgv2 = (
-        results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_final.tsv",
+        results + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_final.tsv",
     )
 else:
     mgv1 = contigs
@@ -593,18 +593,18 @@ else:
 if config["virus_identification"]["run_virfinder"]:
     virfinder = (
         results
-        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{group_assembly}_master_table.tsv",
+        + "04_VIRUS_IDENTIFICATION/01_mgv/output/{assembly}_master_table.tsv",
     )
 else:
     virfinder = contigs
 if config["virus_identification"]["run_virsorter"]:
     virsorter = (
         results
-        + "04_VIRUS_IDENTIFICATION/02_virsorter/{group_assembly}/Metric_files/VIRSorter_phage_signal.tab"
+        + "04_VIRUS_IDENTIFICATION/02_virsorter/{assembly}/Metric_files/VIRSorter_phage_signal.tab"
     )
     virsorter_translation = (
         results
-        + "04_VIRUS_IDENTIFICATION/02_virsorter/{group_assembly}/fasta/input_sequences_id_translation.tsv"
+        + "04_VIRUS_IDENTIFICATION/02_virsorter/{assembly}/fasta/input_sequences_id_translation.tsv"
     )
 else:
     virsorter = contigs
@@ -612,28 +612,28 @@ else:
 if config["virus_identification"]["run_virsorter2"]:
     virsorter2 = (
         results
-        + "04_VIRUS_IDENTIFICATION/03_virsorter2/{group_assembly}/final-viral-score.tsv"
+        + "04_VIRUS_IDENTIFICATION/03_virsorter2/{assembly}/final-viral-score.tsv"
     )
 else:
     virsorter2 = contigs
 if config["virus_identification"]["run_vibrant"]:
     vibrant = (
         results
-        + "04_VIRUS_IDENTIFICATION/04_vibrant/{group_assembly}/VIBRANT_{group_assembly}_contigs/VIBRANT_phages_{group_assembly}_contigs/{group_assembly}_contigs.phages_combined.txt",
+        + "04_VIRUS_IDENTIFICATION/04_vibrant/{assembly}/VIBRANT_{assembly}_contigs/VIBRANT_phages_{assembly}_contigs/{assembly}_contigs.phages_combined.txt",
     )
 else:
     vibrant = contigs
 if config["virus_identification"]["run_deepvirfinder"]:
     deepvirfinder = (
         results
-        + "04_VIRUS_IDENTIFICATION/05_deepvirfinder/{group_assembly}_contigs.fasta_gt1000bp_dvfpred.txt",
+        + "04_VIRUS_IDENTIFICATION/05_deepvirfinder/{assembly}_contigs.fasta_gt1000bp_dvfpred.txt",
     )
 else:
     deepvirfinder = contigs
 if config["virus_identification"]["run_kraken2"]:
     kraken2 = (
         results
-        + "04_VIRUS_IDENTIFICATION/06_kraken2/{group_assembly}/contigs.kraken2.classification.txt",
+        + "04_VIRUS_IDENTIFICATION/06_kraken2/{assembly}/contigs.kraken2.classification.txt",
     )
 else:
     kraken2 = contigs
@@ -654,7 +654,7 @@ rule merge_reports_within_samples:
         kraken2_results=kraken2,
     output:
         results
-        + "04_VIRUS_IDENTIFICATION/07_combine_outputs/{group_assembly}/combined_report.csv",
+        + "04_VIRUS_IDENTIFICATION/07_combine_outputs/{assembly}/combined_report.csv",
     params:
         run_mgv=config["virus_identification"]["run_mgv"],
         run_virfinder=config["virus_identification"]["run_virfinder"],
@@ -663,7 +663,7 @@ rule merge_reports_within_samples:
         run_vibrant=config["virus_identification"]["run_vibrant"],
         run_deepvirfinder=config["virus_identification"]["run_deepvirfinder"],
         run_kraken2=config["virus_identification"]["run_kraken2"],
-        group_assembly="{group_assembly}",
+        assembly="{assembly}",
     conda:
         "../envs/jupyter.yml"
     notebook:
@@ -675,10 +675,10 @@ rule merge_viral_contigs_within_samples:
     input:
         contigs=contigs,
         viral_report=results
-        + "04_VIRUS_IDENTIFICATION/07_combine_outputs/{group_assembly}/combined_report.csv",
+        + "04_VIRUS_IDENTIFICATION/07_combine_outputs/{assembly}/combined_report.csv",
     output:
         results
-        + "04_VIRUS_IDENTIFICATION/07_combine_outputs/{group_assembly}/combined_viral_contigs.fasta",
+        + "04_VIRUS_IDENTIFICATION/07_combine_outputs/{assembly}/combined_viral_contigs.fasta",
     params:
         run_mgv=config["virus_identification"]["run_mgv"],
         run_vf=config["virus_identification"]["run_virfinder"],
@@ -691,7 +691,7 @@ rule merge_viral_contigs_within_samples:
         dvf_score=config["virus_identification"]["deepvirfinder_min_score"],
         run_vb=config["virus_identification"]["run_vibrant"],
         run_kraken2=config["virus_identification"]["run_kraken2"],
-        assembly="{group_assembly}",
+        assembly="{assembly}",
     conda:
         "../envs/jupyter.yml"
     notebook:
@@ -709,8 +709,8 @@ def get_virus_identification_inputs(wildcards):
     )
     return expand(
         results
-        + "04_VIRUS_IDENTIFICATION/07_combine_outputs/{group_assembly}/combined_report.csv",
-        group_assembly=list(set(assembly_report["Assembly"])),
+        + "04_VIRUS_IDENTIFICATION/07_combine_outputs/{assembly}/combined_report.csv",
+        assembly=list(set(assembly_report["Assembly"])),
     )
 
 

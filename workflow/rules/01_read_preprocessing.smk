@@ -139,7 +139,7 @@ rule clumpify:
         + "01_READ_PREPROCESSING/03_clumpify/{assembly_sample}_R2.fastq",
         log=results + "01_READ_PREPROCESSING/03_clumpify/{assembly_sample}.log",
     params:
-        extra_args=config["read_preprocessing"]["clumpify_args"],
+        extra_args=config["read_preprocessing"]["clumpify_arguments"],
     log:
         results + "00_LOGS/01_read_preprocessing_{assembly_sample}.clumpify.log",
     conda:
@@ -207,7 +207,7 @@ rule kneaddata:
     params:
         output_dir=results + "01_READ_PREPROCESSING/04_kneaddata/",
         human_db=resources + "kneaddata/",
-        extra_args=config["read_preprocessing"]["kneaddata_args"],
+        extra_args=config["read_preprocessing"]["kneaddata_arguments"],
         prefix="{assembly_sample}",
     log:
         results + "00_LOGS/01_read_preprocessing_{assembly_sample}.kneaddata.log",
@@ -243,7 +243,7 @@ rule clumpify_read_counts:
     conda:
         "../envs/jupyter.yml"
     notebook:
-        "../notebooks/01_read_preprocessing_clumpify_read_counts.py.ipynb"
+        "../notebooks/01_clumpify_read_counts.py.ipynb"
 
 
 # determine read counts using kneaddata utils
@@ -269,7 +269,7 @@ rule kneaddata_read_counts:
 
 
 # Visualize read counts
-rule read_count_analysis:
+rule read_preprocessing_analysis:
     input:
         clumpify=results + "01_READ_PREPROCESSING/03_clumpify/combined_read_counts.tsv",
         kneaddata=results

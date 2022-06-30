@@ -30,9 +30,9 @@ report: "report/workflow.rst"
 # 01 combine reads for coassembly
 # -----------------------------------------------------
 # identify replicates
-samples_df["group_assembly"] = samples_df["group"] + "_" + samples_df["assembly"]
-group_assemb = samples_df[["group_assembly", "sample"]]
-group_assem_dict = group_assemb.set_index("group_assembly").to_dict()["sample"]
+samples_df["assembly"] = samples_df["assembly"]
+assemb = samples_df[["assembly", "sample"]]
+assem_dict = assemb.set_index("assembly").to_dict()["sample"]
 
 
 # combine enriched reads for assembly (or coassembly if specified)
@@ -40,31 +40,31 @@ rule merge_reads_for_assembly:
     input:
         R1=lambda wildcards: expand(
             results
-            + "01_READ_PREPROCESSING/04_kneaddata/{{group_assembly}}_{sample}_paired_1.fastq",
-            sample=group_assem_dict[wildcards.group_assembly],
+            + "01_READ_PREPROCESSING/04_kneaddata/{{assembly}}_{sample}_paired_1.fastq",
+            sample=assem_dict[wildcards.assembly],
         ),
         R2=lambda wildcards: expand(
             results
-            + "01_READ_PREPROCESSING/04_kneaddata/{{group_assembly}}_{sample}_paired_2.fastq",
-            sample=group_assem_dict[wildcards.group_assembly],
+            + "01_READ_PREPROCESSING/04_kneaddata/{{assembly}}_{sample}_paired_2.fastq",
+            sample=assem_dict[wildcards.assembly],
         ),
         R1S=lambda wildcards: expand(
             results
-            + "01_READ_PREPROCESSING/04_kneaddata/{{group_assembly}}_{sample}_unmatched_1.fastq",
-            sample=group_assem_dict[wildcards.group_assembly],
+            + "01_READ_PREPROCESSING/04_kneaddata/{{assembly}}_{sample}_unmatched_1.fastq",
+            sample=assem_dict[wildcards.assembly],
         ),
         R2S=lambda wildcards: expand(
             results
-            + "01_READ_PREPROCESSING/04_kneaddata/{{group_assembly}}_{sample}_unmatched_2.fastq",
-            sample=group_assem_dict[wildcards.group_assembly],
+            + "01_READ_PREPROCESSING/04_kneaddata/{{assembly}}_{sample}_unmatched_2.fastq",
+            sample=assem_dict[wildcards.assembly],
         ),
     output:
-        R1=results + "03_READ_ASSEMBLY/01_combine_reads/{group_assembly}_paired_1.fastq",
-        R2=results + "03_READ_ASSEMBLY/01_combine_reads/{group_assembly}_paired_2.fastq",
+        R1=results + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_paired_1.fastq",
+        R2=results + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_paired_2.fastq",
         R1S=results
-        + "03_READ_ASSEMBLY/01_combine_reads/{group_assembly}_unmatched_1.fastq",
+        + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_unmatched_1.fastq",
         R2S=results
-        + "03_READ_ASSEMBLY/01_combine_reads/{group_assembly}_unmatched_2.fastq",
+        + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_unmatched_2.fastq",
     shell:
         """
         # combine reads for coassembly
@@ -81,22 +81,22 @@ rule merge_reads_for_assembly:
 # assemble reads using metaspades
 rule metaspades:
     input:
-        R1=results + "03_READ_ASSEMBLY/01_combine_reads/{group_assembly}_paired_1.fastq",
-        R2=results + "03_READ_ASSEMBLY/01_combine_reads/{group_assembly}_paired_2.fastq",
+        R1=results + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_paired_1.fastq",
+        R2=results + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_paired_2.fastq",
         R1S=results
-        + "03_READ_ASSEMBLY/01_combine_reads/{group_assembly}_unmatched_1.fastq",
+        + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_unmatched_1.fastq",
         R2S=results
-        + "03_READ_ASSEMBLY/01_combine_reads/{group_assembly}_unmatched_2.fastq",
+        + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_unmatched_2.fastq",
     output:
         results
-        + "03_READ_ASSEMBLY/02_metaspades/{group_assembly}/"
+        + "03_READ_ASSEMBLY/02_metaspades/{assembly}/"
         + config["read_assembly"]["assembly_output"]
         + ".fasta",
     params:
-        output_dir=results + "03_READ_ASSEMBLY/02_metaspades/{group_assembly}",
+        output_dir=results + "03_READ_ASSEMBLY/02_metaspades/{assembly}",
         extra_args=config["read_assembly"]["metaspades_arguments"],
     log:
-        results + "00_LOGS/03_read_assembly_{group_assembly}.metaspades.log",
+        results + "00_LOGS/03_read_assembly_{assembly}.metaspades.log",
     conda:
         "../envs/metaspades.yml"
     threads: config["read_assembly"]["metaspades_threads"]
@@ -125,18 +125,18 @@ rule metaspades:
 rule quast:
     input:
         results
-        + "03_READ_ASSEMBLY/02_metaspades/{group_assembly}/"
+        + "03_READ_ASSEMBLY/02_metaspades/{assembly}/"
         + config["read_assembly"]["assembly_output"]
         + ".fasta",
     output:
-        results + "03_READ_ASSEMBLY/03_quast/{group_assembly}/transposed_report.tsv",
+        results + "03_READ_ASSEMBLY/03_quast/{assembly}/transposed_report.tsv",
     params:
-        output_dir=results + "03_READ_ASSEMBLY/03_quast/{group_assembly}",
+        output_dir=results + "03_READ_ASSEMBLY/03_quast/{assembly}",
         min_len=config["read_assembly"]["min_contig_length"],
-        labels="{group_assembly}",
+        labels="{assembly}",
         extra_args=config["read_assembly"]["quast_arguments"],
     log:
-        results + "00_LOGS/03_read_assembly_{group_assembly}.quast.log",
+        results + "00_LOGS/03_read_assembly_{assembly}.quast.log",
     conda:
         "../envs/quast.yml"
     shell:
@@ -163,12 +163,12 @@ rule quast:
 rule contig_length_filter:
     input:
         results
-        + "03_READ_ASSEMBLY/02_metaspades/{group_assembly}/"
+        + "03_READ_ASSEMBLY/02_metaspades/{assembly}/"
         + config["read_assembly"]["assembly_output"]
         + ".fasta",
     output:
         results
-        + "03_READ_ASSEMBLY/04_contig_length_filter/{group_assembly}_"
+        + "03_READ_ASSEMBLY/04_contig_length_filter/{assembly}_"
         + config["read_assembly"]["assembly_output"]
         + ".fasta",
     params:
@@ -176,7 +176,7 @@ rule contig_length_filter:
     conda:
         "../envs/jupyter.yml"
     notebook:
-        "../notebooks/03_read_assembly_contig_length_filter.py.ipynb"
+        "../notebooks/03_contig_length_filter.py.ipynb"
 
 
 # Determine inputs for combine_quast_outputs
@@ -188,10 +188,10 @@ def get_enriched_assemblies(wildcards):
     vqc_hq = vqc[
         vqc["total enrichmnet score"] > config["virus_enrichment"]["min_enrichment"]
     ]
-    vqc_hq["group_assembly"] = vqc_hq["sample"].str.rpartition("_")[0]
+    vqc_hq["assembly"] = vqc_hq["sample"].str.rpartition("_")[0]
     return expand(
-        results + "03_READ_ASSEMBLY/03_quast/{group_assembly}/transposed_report.tsv",
-        group_assembly=list(set(vqc_hq["group_assembly"])),
+        results + "03_READ_ASSEMBLY/03_quast/{assembly}/transposed_report.tsv",
+        assembly=list(set(vqc_hq["assembly"])),
     )
 
 

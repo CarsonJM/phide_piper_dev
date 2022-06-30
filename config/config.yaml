@@ -1,28 +1,30 @@
 #------------------------------------
 # Analysis options
 #------------------------------------
-results: "/home/carsonjm/CarsonJM/phide_piper_dev/results/"
-
-
-#------------------------------------
-# Resource options
-#------------------------------------
+# path to folder where outputs should be stored
+results: "/labdata3/hoffdata/carsonjm/CarsonJM/phide_piper_dev/results/"
+# path to directory where large downloads should be stored
 resources: "/labdata3/hoffdata/Shared/resources/"
-# Default: MGV viruses
+
+
+#------------------------------------
+# Database options
+#------------------------------------
+# virus_db default: MGV viruses
 virus_db: "/labdata3/hoffdata/Shared/resources/virus_db/mgv_votu_representatives.fna"
 virus_db_meta: "/labdata3/hoffdata/Shared/resources/virus_db/mgv_contig_info.tsv"
 # if sample is a bulk metagenome (or you want to make your own CRISPR spacer database) then spacer_db and spacer_db_meta 
 # should be set to None, the MAGs to be used should be put in the bacteria_db and bacteria_db_meta fields, and the
 # include_spacer_identification flag should be set to True
-# Default: UHGG Spacers
+# spacer_db default: UHGG Spacers
 spacer_db: "/labdata3/hoffdata/Shared/resources/crispr_spacers/uhgg_spacers.fna"
 spacer_db_meta: "/labdata3/hoffdata/Shared/resources/crispr_spacers/uhgg_spacers_metadata.tsv"
 # if sample is a bulk metagenome, one of the workflows shown below should be run and the MAGs should be used as the input
 # starting at the virus identification module. Additionally, the MAGs should be input here as the bacteria db directory
-# Default: UHGG MAGs
+# bacteria_db default: UHGG MAGs
 bacteria_db: "/labdata3/hoffdata/Shared/resources/bacteria_db/bacteria/bacteria_db_download_complete"
 bacteria_db_meta: "/labdata3/hoffdata/Shared/resources/bacteria_db/uhog_genome-all_metadata.tsv"
-# Default: VPF
+# function_db default: VPF
 function_db: ""
 function_db_meta: ""
 
@@ -31,8 +33,9 @@ function_db_meta: ""
 #------------------------------------ 
 ### Preprocessing ###
 read_preprocessing:
-  clumpify_args: "dedupe=t optical=t spany=t adjacent=t"
-  kneaddata_args: "--remove-intermediate-output --verbose --trimmomatic $CONDA_PREFIX/share/trimmomatic-0.39-2"
+  include_preprocessing_module: True
+  clumpify_arguments: "dedupe=t optical=t spany=t adjacent=t"
+  kneaddata_arguments: "--remove-intermediate-output --verbose --trimmomatic $CONDA_PREFIX/share/trimmomatic-0.39-2"
   kneaddata_threads: 10
 
 ### Virus pipeline modules ###
@@ -42,6 +45,7 @@ virus_enrichment:
   min_enrichment: 0
 
 read_assembly:
+  include_assembly_module: True
   metaspades_arguments: ""
   metaspades_threads: 10
   assembly_output: "contigs"
@@ -49,7 +53,6 @@ read_assembly:
   min_contig_length: 1000
 
 virus_identification:
-  assembled_contigs: ""
   run_mgv: True
   mgv_threads: 10
   run_virsorter: True
@@ -74,7 +77,6 @@ virus_identification:
   kraken2_threads: 10
 
 virus_clustering:
-  viral_contigs: ""
   derep_min_ani: 0.99
   derep_min_tcov: 0.99
   derep_min_qcov: 0
@@ -87,7 +89,6 @@ virus_clustering:
   blast_threads: 10
 
 virus_quality:
-  clustered_viral_contigs: ""
   checkv_arguments: ""
   checkv_threads: 10
   min_completeness: 50
@@ -124,7 +125,6 @@ virus_host:
 
 
 virus_taxonomy:
-  quality_filtered_contigs: ""
   run_diamond_taxonomy: True
   diamond_threads: 10
   min_protein_agreement: 70
@@ -141,13 +141,11 @@ virus_taxonomy:
   vcontact2_threads: 10
 
 virus_lifestyle:
-  quality_filtered_contigs: ""
   run_bacphlip: True
   bacphlip_confidence: 0.5
   include_checkv_proviruses: True
 
 virus_function:
-  quality_filtered_contigs: ""
   run_hmmer: True
   hmmer_threads: 10
   # hmmer
@@ -157,7 +155,6 @@ virus_function:
   include_vibrant_annotations: True
 
 virus_abundance:
-  quality_filtered_contigs: ""
   run_metapop: True
   min_breadth: 50
   min_depth: 1
