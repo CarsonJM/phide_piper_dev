@@ -48,8 +48,7 @@ rule build_checkv:
 rule checkv:
     input:
         checkv_db=resources + "checkv/checkv-db-v1.2/README.txt",
-        virus_contigs=results
-        + "05_VIRUS_CLUSTERING/03_cluster_viruses/cluster_representatives.fna",
+        virus_contigs=results + "05_VIRUS_DEREPLICATION/02_dereplicate_viruses/dereplicated_viruses.fna",
     output:
         checkv_results=results + "06_VIRUS_QUALITY/01_checkv/quality_summary.tsv",
         checkv_proviruses=results + "06_VIRUS_QUALITY/01_checkv/proviruses.fna",
@@ -74,17 +73,27 @@ rule checkv:
 # -----------------------------------------------------
 # 02 Quality filter viruses
 # -----------------------------------------------------
+# determine input for quality filtering
+if config["virus_binning"]["include_binning_module"]:
+    checkv_results=results + "07_VIRUS_BINNING/03_checkv/quality_summary.tsv",
+    checkv_proviruses=results + "07_VIRUS_BINNING/03_checkv/proviruses.fna",
+    checkv_viruses=results + "07_VIRUS_BINNING/03_checkv/viruses.fna",
+else:
+    checkv_results=results + "06_VIRUS_QUALITY/01_checkv/quality_summary.tsv",
+    checkv_proviruses=results + "06_VIRUS_QUALITY/01_checkv/proviruses.fna",
+    checkv_viruses=results + "06_VIRUS_QUALITY/01_checkv/viruses.fna",
+
 rule quality_filter_viruses:
     input:
-        checkv_proviruses=results + "06_VIRUS_QUALITY/01_checkv/proviruses.fna",
-        checkv_viruses=results + "06_VIRUS_QUALITY/01_checkv/viruses.fna",
-        checkv_results=results + "06_VIRUS_QUALITY/01_checkv/quality_summary.tsv",
+        checkv_proviruses=checkv_proviruses,
+        checkv_viruses=checkv_viruses,
+        checkv_results=checkv_results,
     output:
         results + "06_VIRUS_QUALITY/02_quality_filter/quality_filtered_viruses.fna",
     params:
         min_completeness=config["virus_quality"]["min_completeness"],
         min_viral_genes=config["virus_quality"]["min_viral_genes"],
-        max_bacterial_genes=config["virus_quality"]["max_bacterial_genes"]
+        max_bacterial_genes=config["virus_quality"]["max_bacterial_genes"],
     conda:
         "../envs/jupyter.yml"
     notebook:

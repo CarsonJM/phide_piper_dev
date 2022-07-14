@@ -6,9 +6,9 @@ import pandas as pd
 
 # Load sample information and validate
 configfile: "config/config.yaml"
-
-
 samples_df = pd.read_csv("config/samples.tsv", sep="\t")
+samples = samples_df['sample']
+coassemblies = list(set(samples_df['assembly']))
 
 
 # load results path
@@ -27,76 +27,25 @@ report: "report/workflow.rst"
 # Read assembly rules
 # -------------------------------------
 # -----------------------------------------------------
-# 01 combine reads for coassembly
+# 03 metaSPAdes
 # -----------------------------------------------------
-# identify replicates
-samples_df["assembly"] = samples_df["assembly"]
-assemb = samples_df[["assembly", "sample"]]
-assem_dict = assemb.set_index("assembly").to_dict()["sample"]
-
-
-# combine enriched reads for assembly (or coassembly if specified)
-rule merge_reads_for_assembly:
+# Assemble reads using metaspades (single)
+checkpoint metaspades_single:
     input:
-        R1=lambda wildcards: expand(
-            results
-            + "01_READ_PREPROCESSING/04_kneaddata/{{assembly}}_{sample}_paired_1.fastq",
-            sample=assem_dict[wildcards.assembly],
-        ),
-        R2=lambda wildcards: expand(
-            results
-            + "01_READ_PREPROCESSING/04_kneaddata/{{assembly}}_{sample}_paired_2.fastq",
-            sample=assem_dict[wildcards.assembly],
-        ),
-        R1S=lambda wildcards: expand(
-            results
-            + "01_READ_PREPROCESSING/04_kneaddata/{{assembly}}_{sample}_unmatched_1.fastq",
-            sample=assem_dict[wildcards.assembly],
-        ),
-        R2S=lambda wildcards: expand(
-            results
-            + "01_READ_PREPROCESSING/04_kneaddata/{{assembly}}_{sample}_unmatched_2.fastq",
-            sample=assem_dict[wildcards.assembly],
-        ),
-    output:
-        R1=results + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_paired_1.fastq",
-        R2=results + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_paired_2.fastq",
-        R1S=results
-        + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_unmatched_1.fastq",
-        R2S=results
-        + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_unmatched_2.fastq",
-    shell:
-        """
-        # combine reads for coassembly
-        cat {input.R1} > {output.R1}
-        cat {input.R2} > {output.R2}
-        cat {input.R1S} > {output.R1S}
-        cat {input.R2S} > {output.R2S}
-        """
-
-
-# -----------------------------------------------------
-# 02 metaSPAdes
-# -----------------------------------------------------
-# assemble reads using metaspades
-rule metaspades:
-    input:
-        R1=results + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_paired_1.fastq",
-        R2=results + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_paired_2.fastq",
-        R1S=results
-        + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_unmatched_1.fastq",
-        R2S=results
-        + "03_READ_ASSEMBLY/01_combine_reads/{assembly}_unmatched_2.fastq",
+        R1=results
+        + "01_READ_PREPROCESSING/04_kneaddata/{assembly}_paired_1.fastq",
+        R2=results
+        + "01_READ_PREPROCESSING/04_kneaddata/{assembly}_paired_2.fastq",
     output:
         results
-        + "03_READ_ASSEMBLY/02_metaspades/{assembly}/"
+        + "03_READ_ASSEMBLY/03_metaspades/{assembly}/"
         + config["read_assembly"]["assembly_output"]
         + ".fasta",
     params:
-        output_dir=results + "03_READ_ASSEMBLY/02_metaspades/{assembly}",
+        output_dir=results + "03_READ_ASSEMBLY/03_metaspades/{assembly}",
         extra_args=config["read_assembly"]["metaspades_arguments"],
     log:
-        results + "00_LOGS/03_read_assembly_{assembly}.metaspades.log",
+        results + "00_LOGS/03_read_assembly_{assembly}.metaspades_single.log",
     conda:
         "../envs/metaspades.yml"
     threads: config["read_assembly"]["metaspades_threads"]
@@ -105,10 +54,8 @@ rule metaspades:
         # assemble reads using metaspades
         spades.py \
         --meta \
-        --pe1-1 {input.R1} \
-        --pe1-2 {input.R2} \
-        --pe1-s {input.R1S} \
-        --pe1-s {input.R2S} \
+        -1 {input.R1} \
+        -2 {input.R2} \
         -o {params.output_dir} \
         --threads {threads} \
         {params.extra_args}
@@ -117,26 +64,104 @@ rule metaspades:
         cp {params.output_dir}/spades.log {log}
         """
 
+# Assemble reads using metaspades (coassembly)
+checkpoint metaspades_coassembly:
+    input:
+        R1=results + "03_READ_ASSEMBLY/01_combine_coassembly_reads/{assembly}_coassembly_1.fastq",
+        R2=results + "03_READ_ASSEMBLY/01_combine_coassembly_reads/{assembly}_coassembly_2.fastq",
+    output:
+        results
+        + "03_READ_ASSEMBLY/03_metaspades/{assembly}_coassembly/"
+        + config["read_assembly"]["assembly_output"]
+        + ".fasta",
+    params:
+        output_dir=results + "03_READ_ASSEMBLY/03_metaspades/{assembly}_coassembly",
+        extra_args=config["read_assembly"]["metaspades_arguments"],
+    log:
+        results + "00_LOGS/03_read_assembly_{assembly}.metaspades_coassembly.log",
+    conda:
+        "../envs/metaspades.yml"
+    threads: config["read_assembly"]["metaspades_threads"]
+    shell:
+        """
+        # assemble reads using metaspades
+        spades.py \
+        --meta \
+        -1 {input.R1} \
+        -2 {input.R2} \
+        -o {params.output_dir} \
+        --threads {threads} \
+        {params.extra_args}
+
+        # copy spades.log to log file
+        cp {params.output_dir}/spades.log {log}
+        """
 
 # -----------------------------------------------------
-# 03 QUAST
+# 04 QUAST
 # -----------------------------------------------------
-# run quast to determine the quality of the assemblies
-rule quast:
+# run quast to determine the quality of single assemblies
+rule quast_single:
     input:
         results
-        + "03_READ_ASSEMBLY/02_metaspades/{assembly}/"
+        + "03_READ_ASSEMBLY/03_metaspades/{sample}/"
         + config["read_assembly"]["assembly_output"]
         + ".fasta",
     output:
-        results + "03_READ_ASSEMBLY/03_quast/{assembly}/transposed_report.tsv",
+        results + "03_READ_ASSEMBLY/04_quast/{sample}/transposed_report.tsv",
     params:
-        output_dir=results + "03_READ_ASSEMBLY/03_quast/{assembly}",
+        output_dir=results + "03_READ_ASSEMBLY/04_quast/{sample}",
         min_len=config["read_assembly"]["min_contig_length"],
-        labels="{assembly}",
+        labels="{sample}",
         extra_args=config["read_assembly"]["quast_arguments"],
     log:
-        results + "00_LOGS/03_read_assembly_{assembly}.quast.log",
+        results + "00_LOGS/03_read_assembly_{sample}.quast_single.log",
+    conda:
+        "../envs/quast.yml"
+    shell:
+        """
+        # assembly analysis using quast
+        metaquast.py \
+        {input} \
+        -o {params.output_dir} \
+        --threads {threads} \
+        --min-contig {params.min_len} \
+        --contig-thresholds 0,1000,5000,10000,{params.min_len} \
+        --labels {params.labels} \
+        {params.extra_args}
+
+        # copy spades.log to log file
+        cp {params.output_dir}/quast.log {log}
+        """
+    
+# combine quast outputs
+rule combine_quast_single_across_samples:
+    input:
+        expand(results + "03_READ_ASSEMBLY/04_quast/{sample}/transposed_report.tsv", sample=samples),
+    output:
+        results + "03_READ_ASSEMBLY/read_assembly_report_single.tsv",
+    shell:
+        """
+        # combine quast reports for all assemblies, only keeping the header from one file
+        awk 'FNR>1 || NR==1' {input} > {output}
+        """
+
+# run quast to determine the quality of coassemblies
+rule quast_coassembly:
+    input:
+        results
+        + "03_READ_ASSEMBLY/03_metaspades/{assembly}_coassembly/"
+        + config["read_assembly"]["assembly_output"]
+        + ".fasta",
+    output:
+        results + "03_READ_ASSEMBLY/04_quast/{assembly}_coassembly/transposed_report.tsv",
+    params:
+        output_dir=results + "03_READ_ASSEMBLY/04_quast/{assembly}_coassembly",
+        min_len=config["read_assembly"]["min_contig_length"],
+        labels="{assembly}_coassembly",
+        extra_args=config["read_assembly"]["quast_arguments"],
+    log:
+        results + "00_LOGS/03_read_assembly_{assembly}.quast_coassembly.log",
     conda:
         "../envs/quast.yml"
     shell:
@@ -155,75 +180,78 @@ rule quast:
         cp {params.output_dir}/quast.log {log}
         """
 
-
-# -----------------------------------------------------
-# 04 Contig length filter
-# -----------------------------------------------------
-# filter contigs based on contig length
-rule contig_length_filter:
-    input:
-        results
-        + "03_READ_ASSEMBLY/02_metaspades/{assembly}/"
-        + config["read_assembly"]["assembly_output"]
-        + ".fasta",
-    output:
-        results
-        + "03_READ_ASSEMBLY/04_contig_length_filter/{assembly}_"
-        + config["read_assembly"]["assembly_output"]
-        + ".fasta",
-    params:
-        min_length=config["read_assembly"]["min_contig_length"],
-    conda:
-        "../envs/jupyter.yml"
-    notebook:
-        "../notebooks/03_contig_length_filter.py.ipynb"
-
-
-# Determine inputs for combine_quast_outputs
-def get_enriched_assemblies(wildcards):
-    vqc = pd.read_csv(
-        checkpoints.combine_viromeqc_results_across_samples.get(**wildcards).output[0],
-        sep="\t",
-    )
-    vqc_hq = vqc[
-        vqc["total enrichmnet score"] > config["virus_enrichment"]["min_enrichment"]
-    ]
-    vqc_hq["assembly"] = vqc_hq["sample"].str.rpartition("_")[0]
-    return expand(
-        results + "03_READ_ASSEMBLY/03_quast/{assembly}/transposed_report.tsv",
-        assembly=list(set(vqc_hq["assembly"])),
-    )
-
-
 # combine quast outputs
-checkpoint combine_quast_outputs_across_samples:
+rule combine_quast_coassembly_across_assemblies:
     input:
-        get_enriched_assemblies,
+        expand(results + "03_READ_ASSEMBLY/04_quast/{assembly}_coassembly/transposed_report.tsv", assembly=coassemblies),
     output:
-        results + "03_READ_ASSEMBLY/read_assembly_report.tsv",
+        results + "03_READ_ASSEMBLY/read_assembly_report_coassembly.tsv",
     shell:
         """
         # combine quast reports for all assemblies, only keeping the header from one file
         awk 'FNR>1 || NR==1' {input} > {output}
         """
 
+# # -----------------------------------------------------
+# # 05 Contig length filter (single)
+# # -----------------------------------------------------
+# # filter contigs based on contig length
+# rule contig_length_filter_single:
+#     input:
+#         results
+#         + "03_READ_ASSEMBLY/03_metaspades/{sample}/"
+#         + config["read_assembly"]["assembly_output"]
+#         + ".fasta",
+#     output:
+#         results
+#         + "03_READ_ASSEMBLY/05_contig_length_filter/{sample}_"
+#         + config["read_assembly"]["assembly_output"]
+#         + ".fasta",
+#     params:
+#         min_length=config["read_assembly"]["min_contig_length"],
+#     conda:
+#         "../envs/jupyter.yml"
+#     notebook:
+#         "../notebooks/03_contig_length_filter.py.ipynb"
 
-# -----------------------------------------------------
-# Analyze assemblies
-# -----------------------------------------------------
-# analyze quast results to visualize assembly quality
-rule read_assembly_analysis:
-    input:
-        results + "03_READ_ASSEMBLY/read_assembly_report.tsv",
-    output:
-        report(
-            results + "03_READ_ASSEMBLY/read_assembly_figure.png",
-            caption="../report/read_assembly_analysis_contig_count.rst",
-            category="Step 02: Read assembly",
-        ),
-    params:
-        min_len=config["read_assembly"]["min_contig_length"],
-    conda:
-        "../envs/jupyter.yml"
-    notebook:
-        "../notebooks/03_read_assembly_analysis.py.ipynb"
+
+# # filter contigs based on contig length
+# rule contig_length_filter_coassembly:
+#     input:
+#         results
+#         + "03_READ_ASSEMBLY/03_metaspades/{assembly}_coassembly/"
+#         + config["read_assembly"]["assembly_output"]
+#         + ".fasta",
+#     output:
+#         results
+#         + "03_READ_ASSEMBLY/05_contig_length_filter/{assembly}_coassembly_"
+#         + config["read_assembly"]["assembly_output"]
+#         + ".fasta",
+#     params:
+#         min_length=config["read_assembly"]["min_contig_length"],
+#     conda:
+#         "../envs/jupyter.yml"
+#     notebook:
+#         "../notebooks/03_contig_length_filter.py.ipynb"
+
+
+# # -----------------------------------------------------
+# # Analyze assemblies
+# # -----------------------------------------------------
+# # analyze quast results to visualize assembly quality
+# rule read_assembly_analysis:
+#     input:
+#         single=results + "03_READ_ASSEMBLY/read_assembly_report_single.tsv",
+#         coassembly=results + "03_READ_ASSEMBLY/read_assembly_report_coassembly.tsv",
+#     output:
+#         report(
+#             results + "03_READ_ASSEMBLY/read_assembly_figure.png",
+#             caption="../report/read_assembly_analysis_contig_count.rst",
+#             category="Step 02: Read assembly",
+#         ),
+#     params:
+#         min_len=config["read_assembly"]["min_contig_length"],
+#     conda:
+#         "../envs/jupyter.yml"
+#     notebook:
+#         "../notebooks/03_read_assembly_analysis.py.ipynb"

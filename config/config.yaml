@@ -2,7 +2,7 @@
 # Analysis options
 #------------------------------------
 # path to folder where outputs should be stored
-results: "/labdata3/hoffdata/carsonjm/CarsonJM/phide_piper_dev/results/"
+results: "/labdata3/hoffdata/carsonjm/CarsonJM/phide_piper_dev/test_results/"
 # path to directory where large downloads should be stored
 resources: "/labdata3/hoffdata/Shared/resources/"
 
@@ -12,6 +12,7 @@ resources: "/labdata3/hoffdata/Shared/resources/"
 #------------------------------------
 # virus_db default: MGV viruses
 virus_db: "/labdata3/hoffdata/Shared/resources/virus_db/mgv_votu_representatives.fna"
+virus_db_proteins: "/labdata3/hoffdata/Shared/resources/virus_db/mgv_votu_representatives.faa"
 virus_db_meta: "/labdata3/hoffdata/Shared/resources/virus_db/mgv_contig_info.tsv"
 # if sample is a bulk metagenome (or you want to make your own CRISPR spacer database) then spacer_db and spacer_db_meta 
 # should be set to None, the MAGs to be used should be put in the bacteria_db and bacteria_db_meta fields, and the
@@ -27,105 +28,94 @@ bacteria_db_meta: "/labdata3/hoffdata/Shared/resources/bacteria_db/uhog_genome-a
 # function_db default: VPF
 function_db: ""
 function_db_meta: ""
+# taxonomy HMMs defauly: VOGdb w/viPHog
+taxonomy_hmm: ""
+
 
 #------------------------------------
 # Rule customization 
 #------------------------------------ 
 ### Preprocessing ###
 read_preprocessing:
-  include_preprocessing_module: True
-  clumpify_arguments: "dedupe=t optical=t spany=t adjacent=t"
   kneaddata_arguments: "--remove-intermediate-output --verbose --trimmomatic $CONDA_PREFIX/share/trimmomatic-0.39-2"
-  kneaddata_threads: 10
+  kneaddata_threads: 20
 
 ### Virus pipeline modules ###
 virus_enrichment:
   viromeqc_arguments: ""
-  viromeqc_threads: 10
-  min_enrichment: 0
+  viromeqc_threads: 20
 
 read_assembly:
-  include_assembly_module: True
+  run_coassembly: True
   metaspades_arguments: ""
-  metaspades_threads: 10
-  assembly_output: "contigs"
+  metaspades_threads: 20
+  # choose whether to use "scaffolds" or "contigs"
+  assembly_output: "scaffolds"
   quast_arguments: "--max-ref-num 0"
   min_contig_length: 1000
 
 virus_identification:
   run_mgv: True
-  mgv_threads: 10
+  mgv_threads: 20
   run_virsorter: True
   virsorter_cat: [1,2,3,4,5,6]
   virsorter_arguments: "--db 2 --diamond"
-  virsorter_threads: 10
+  virsorter_threads: 20
   run_virfinder: True
   virfinder_min_score: 0.9
-  virfinder_threads: 10
+  virfinder_threads: 20
   run_virsorter2: True
   virsorter2_min_score: 0.9
   virsorter2_arguments: "--keep-original-seq --include-groups dsDNAphage"
-  virsorter2_threads: 10
+  virsorter2_threads: 20
   run_vibrant: True
   vibrant_arguments: "-no_plot"
-  vibrant_threads: 10
+  vibrant_threads: 20
   run_deepvirfinder: True
   deepvirfinder_min_score: 0.9
-  deepvirfinder_threads: 10
+  deepvirfinder_threads: 20
   run_kraken2: True
   kraken2_arguments: ""
-  kraken2_threads: 10
+  kraken2_threads: 20
 
-virus_clustering:
-  derep_min_ani: 0.99
-  derep_min_tcov: 0.99
-  derep_min_qcov: 0
-  cluster_with_virusdb: True
-  min_virusdb_breadth: 25
-  min_virusdb_length: 0
-  min_ani: 95
-  min_tcov: 85
+virus_dereplication:
+  min_ani: 99
   min_qcov: 0
-  blast_threads: 10
+  min_tcov: 99
+  blast_threads: 20
 
 virus_quality:
+  include_quality_module: True
   checkv_arguments: ""
-  checkv_threads: 10
+  checkv_threads: 20
   min_completeness: 50
-  max_bacterial_genes: 1
+  max_bacterial_genes: 2
   min_viral_genes: 0
 
-spacer_identification:
-  run_pilercr: True
-  pilercr_threads: 10
-  run_crt: True
-  crt_threads: 10
-  run_crisprdetect: True
-  crisprdetect_threads: 10
-  run_crisprcasfinder: True
-  crisprcasfinder_threads: 10
-  run_crispridentify: True
-  crispridentify_threads: 10
+virus_binning:
+  run_binning: True
+  max_completeness_to_bin: 90
+  bowtie2_arguments: ""
+  vrhyme_arguments: "--read_id 0.95 --red 1"
+  vrhyme_threads: 10
 
 virus_host:
-  quality_filtered_contigs: ""
   run_spacer_blast: True
-  blast_threads: 10
+  blast_threads: 20
   max_spacer_mismatch: 1
   min_spacer_coverage: 95
   min_spacer_agreement: 70
   run_phist: True
   min_phist_common_kmers: 10
   min_phist_agreement: 70
-  phist_threads: 10
+  phist_threads: 20
   run_rafah: True
-  rafah_threads: 10
-  # rafah:
-  # hostg:
-
+  rafah_threads: 20
 
 virus_taxonomy:
   run_diamond_taxonomy: True
+  prodigal_arguments: ""
+  prodigal_threads: 20
   diamond_threads: 10
   min_protein_agreement: 70
   min_protein_hits: 1
@@ -133,33 +123,74 @@ virus_taxonomy:
   min_aai_genus: 40
   min_protein_hits_family: 2
   min_aai_family: 30
-  run_vpfclass: True
-  # vpf_class:
-  run_hmmer: True
-  # hmmer:
-  run_vcontact2: True
-  vcontact2_threads: 10
+  run_hmm_taxonomy: True
+  hmm_arguments: ""
+  hmm_threads: 10
 
 virus_lifestyle:
   run_bacphlip: True
+  bacphlip_arguments: ""
   bacphlip_confidence: 0.5
+  bacphlip_threads: 10
   include_checkv_proviruses: True
 
 virus_function:
-  run_hmmer: True
-  hmmer_threads: 10
-  # hmmer
-  run_dramv: True
-  dramv_threads: 10
-  # dramv: 
+  run_dram: True
+  dram_arguments: ""
+  dram_threads: 30
   include_vibrant_annotations: True
+
+virus_clustering:
+  cluster_with_virusdb: True
+  mash_arguments: ""
+  min_mash_identity: 90
+  min_mash_shared_hashes: 0
+  min_mash_median_multiplicity: 0
+  mash_threads: 20
+  blast_arguments: ""
+  min_ani: 95
+  min_tcov: 85
+  min_qcov: 0
+  blast_threads: 20
+
+virus_phylogeny:
 
 virus_abundance:
   run_metapop: True
+  metapop_arguments: ""
   min_breadth: 50
   min_depth: 1
   min_length: 0
   metapop_threads: 10
-  run_kraken: True
-  kraken_threads: 10
+  run_kraken2: True
+  kraken2_arguments: ""
+  kraken2_threads: 10
+  run_instrain: True
+  instrain_arguments: ""
+  instrain_threads: 10
 
+spacer_identification:
+  run_pilercr: True
+  pilercr_arguments: ""
+  pilercr_threads: 10
+  run_crt: True
+  crt_arguments: ""
+  crt_threads: 10
+  run_crisprdetect: True
+  crisprdetect_arguments: ""
+  crisprdetect_threads: 10
+  run_crisprcasfinder: True
+  crisprcasfinder_arguments: ""
+  crisprcasfinder_threads: 10
+  run_crispridentify: True
+  crispridentify_arguments: ""
+  crispridentify_threads: 10
+
+prophage_activity:
+  run_propagate: True
+  propagate_arguments: ""
+  propagate_threads: ""
+
+bacterial_mag_pipeline:
+
+eukaryotic_mag_pipeline:

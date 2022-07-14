@@ -6,12 +6,8 @@ import pandas as pd
 
 # Load sample information and validate
 configfile: "config/config.yaml"
-
-
 samples_df = pd.read_csv("config/samples.tsv", sep="\t")
-assembly_sample = (
-    samples_df["assembly"] + "_" + samples_df["sample"]
-)
+samples = samples_df["sample"]
 
 
 # load results path
@@ -72,21 +68,17 @@ rule viromeqc:
         lsu=resources + "viromeqc/index/SILVA_132_LSURef_tax_silva.clean.1.bt2",
         ssu=resources + "viromeqc/index/SILVA_132_SSURef_Nr99_tax_silva.clean.1.bt2",
         R1=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_paired_1.fastq",
+        + "01_READ_PREPROCESSING/04_kneaddata/{sample}_paired_1.fastq",
         R2=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_paired_2.fastq",
-        R1S=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_unmatched_1.fastq",
-        R2S=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_unmatched_2.fastq",
+        + "01_READ_PREPROCESSING/04_kneaddata/{sample}_paired_2.fastq",
     output:
-        results + "02_VIRUS_ENRICHMENT/01_viromeqc/{assembly_sample}/vqc.tsv",
+        results + "02_VIRUS_ENRICHMENT/01_viromeqc/{sample}/vqc.tsv",
     params:
         viromeqc_script=resources + "viromeqc/viromeQC.py",
-        temp=resources + "viromeqc/tmp/{assembly_sample}/",
+        temp=resources + "viromeqc/tmp/{sample}/",
         extra_arguments=config["virus_enrichment"]["viromeqc_arguments"],
     log:
-        results + "00_LOGS/02_virus_enrichment_{assembly_sample}.viromeqc.log",
+        results + "00_LOGS/02_virus_enrichment_{sample}.viromeqc.log",
     conda:
         "../envs/viromeqc.yml"
     threads: config["virus_enrichment"]["viromeqc_threads"]
@@ -97,7 +89,7 @@ rule viromeqc:
 
         # determine virome enrichment using viromeqc
         {params.viromeqc_script} \
-        --input {input.R1} {input.R2} {input.R1S} {input.R2S} \
+        --input {input.R1} {input.R2} \
         --output {output} \
         --bowtie2_threads {threads} \
         --diamond_threads {threads} \
@@ -105,7 +97,7 @@ rule viromeqc:
         {params.extra_arguments} > {log} 2>&1
 
         # add sample column to each vqc output
-        s={wildcards.assembly_sample}
+        s={wildcards.sample}
         sed -i "s/$/\t$s/" {output}
         sample="sample"
         sed -i "1s/$s/$sample/" {output}
@@ -120,8 +112,8 @@ checkpoint combine_viromeqc_results_across_samples:
     input:
         expand(
             results
-            + "02_VIRUS_ENRICHMENT/01_viromeqc/{assembly_sample}/vqc.tsv",
-            assembly_sample=assembly_sample,
+            + "02_VIRUS_ENRICHMENT/01_viromeqc/{sample}/vqc.tsv",
+            sample=samples,
         ),
     output:
         results + "02_VIRUS_ENRICHMENT/virus_enrichment_report.tsv",

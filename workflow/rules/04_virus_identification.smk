@@ -27,45 +27,6 @@ report: "report/workflow.rst"
 # Virus identification rules
 # -----------------------------------------------------
 # -----------------------------------------------------
-# 00 input
-# -----------------------------------------------------
-# symlink input paths to new paths
-rule symlink_contigs:
-    input:
-        lambda wildcards: samples_df[
-            (samples_df["assembly"]) == wildcards.assembly
-        ]["contigs"].iloc[0],
-    output:
-        results
-        + "00_INPUT/{assembly}"
-        + "_"
-        + config["read_assembly"]["assembly_output"]
-        + ".fasta",
-    shell:
-        """
-        # symlink input paths to renamed files
-        ln -s {input} {output}
-        """
-
-
-# select which contig files to use depending on the files that are input
-if config["read_assembly"]["include_assembly_module"]:
-    contigs = (
-        results
-        + "03_READ_ASSEMBLY/04_contig_length_filter/{assembly}_"
-        + config["read_assembly"]["assembly_output"]
-        + ".fasta",
-    )
-else:
-    contigs = (
-        results
-        + "00_INPUT/{assembly}_"
-        + config["read_assembly"]["assembly_output"]
-        + ".fasta",
-    )
-
-
-# -----------------------------------------------------
 # 01 MGV (& VirFinder)
 # -----------------------------------------------------
 # download build mgv repo and HMM files
@@ -94,7 +55,10 @@ rule build_mgv:
 # use prodigal to identify ORFs
 rule mgv_prodigal:
     input:
-        contigs,
+        results
+        + "03_READ_ASSEMBLY/{assembly_type}/{sample}_"
+        + config["read_assembly"]["assembly_output"]
+        + ".fasta",
     output:
         mgv_fna=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}.fna",
         mgv_faa=results + "04_VIRUS_IDENTIFICATION/01_mgv/input/{assembly}.faa",

@@ -4,7 +4,7 @@ channels:
   - defaults
 
 dependencies:
-  - python=3
+  - python=3.6
   - samtools
   - mash
   - mummer
@@ -13,3 +13,9 @@ dependencies:
   - bowtie2
   - bwa
   - git
+  - pandas=1.0.0 
+  - numpy=1.17.0 
+  - scikit-learn=0.23.0 
+  - numba 
+  - pysam=0.15.0 
+  - networkx=2.1

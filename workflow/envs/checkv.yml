@@ -4,4 +4,11 @@ channels:
   - defaults
 
 dependencies:
-  - checkv=0.8.1
+  - biopython=1.79
+  - boost=1.74.0
+  - boost-cpp=1.74
+  - checkv=0.9.0
+  - diamond=2.0.15
+  - hmmer=3.3.2
+  - kcounter=0.1.0=py38h0213d0e_1
+  - prodigal=2.6.3

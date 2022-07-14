@@ -6,12 +6,9 @@ import pandas as pd
 
 # Load sample information and validate
 configfile: "config/config.yaml"
-
-
 samples_df = pd.read_csv("config/samples.tsv", sep="\t")
-assembly_sample = (
-    samples_df["assembly"] + "_" + samples_df["sample"]
-)
+samples = samples_df["sample"]
+
 
 # load results path
 results = config["results"]
@@ -29,34 +26,30 @@ report: "../report/workflow.rst"
 # Preprocessing Rules
 # -------------------------------------
 # -----------------------------------------------------
-# 00 Input
+# 00 Symlink Reads
 # -----------------------------------------------------
 # symlink input paths to new paths
 rule symlink_reads:
     input:
         R1=lambda wildcards: samples_df[
             (
-                + samples_df["assembly"]
-                + "_"
                 + samples_df["sample"]
                 + "_"
                 + samples_df["replicate"]
             )
-            == wildcards.assembly_sample_replicate
+            == wildcards.sample_replicate
         ]["R1"].iloc[0],
         R2=lambda wildcards: samples_df[
             (
-                + samples_df["assembly"]
-                + "_"
                 + samples_df["sample"]
                 + "_"
                 + samples_df["replicate"]
             )
-            == wildcards.assembly_sample_replicate
+            == wildcards.sample_replicate
         ]["R2"].iloc[0],
     output:
-        R1=results + "00_INPUT/{assembly_sample_replicate}_R1.fastq.gz",
-        R2=results + "00_INPUT/{assembly_sample_replicate}_R2.fastq.gz",
+        R1=results + "00_INPUT/{sample_replicate}_1.fastq.gz",
+        R2=results + "00_INPUT/{sample_replicate}_2.fastq.gz",
     shell:
         """
         # symlink input paths to renamed files
@@ -66,32 +59,29 @@ rule symlink_reads:
 
 
 # identify replicates
-samples_df["assembly_sample"] = (
-    samples_df["assembly"] + "_" + samples_df["sample"]
-)
-sam_rep = samples_df[["assembly_sample", "replicate"]]
-sam_rep_dict = sam_rep.set_index("assembly_sample").to_dict()["replicate"]
+sample_replicate = samples_df[["sample", "replicate"]]
+sample_replicate_dictionary = sample_replicate.set_index("sample").to_dict()["replicate"]
 
 
 # -----------------------------------------------------
-# 01 Merge replicates
+# 01 Merge Replicates
 # -----------------------------------------------------
 # merge replicate files into single file
 rule merge_replicates:
     input:
         R1=lambda wildcards: expand(
-            results + "00_INPUT/{{assembly_sample}}_{replicate}_R1.fastq.gz",
-            replicate=sam_rep_dict[wildcards.assembly_sample],
+            results + "00_INPUT/{{sample}}_{replicate}_1.fastq.gz",
+            replicate=sample_replicate_dictionary[wildcards.sample],
         ),
         R2=lambda wildcards: expand(
-            results + "00_INPUT/{{assembly_sample}}_{replicate}_R2.fastq.gz",
-            replicate=sam_rep_dict[wildcards.assembly_sample],
+            results + "00_INPUT/{{sample}}_{replicate}_2.fastq.gz",
+            replicate=sample_replicate_dictionary[wildcards.sample],
         ),
     output:
         R1=results
-        + "01_READ_PREPROCESSING/01_merge_replicates/{assembly_sample}_R1.fastq.gz",
+        + "01_READ_PREPROCESSING/01_merge_replicates/{sample}_1.fastq.gz",
         R2=results
-        + "01_READ_PREPROCESSING/01_merge_replicates/{assembly_sample}_R2.fastq.gz",
+        + "01_READ_PREPROCESSING/01_merge_replicates/{sample}_2.fastq.gz",
     shell:
         """
         # symlink input paths to renamed files
@@ -101,65 +91,74 @@ rule merge_replicates:
 
 
 # -----------------------------------------------------
-# 02 Gunzip files
+# 02 Raw FASTQC & MULTIQC
 # -----------------------------------------------------
-# gunzip merged files
-rule gunzip_merged_reads:
+# Run FASTQC on raw R1 reads
+rule raw_fastqc_R1:
     input:
-        R1=results
-        + "01_READ_PREPROCESSING/01_merge_replicates/{assembly_sample}_R1.fastq.gz",
-        R2=results
-        + "01_READ_PREPROCESSING/01_merge_replicates/{assembly_sample}_R2.fastq.gz",
+        results
+        + "01_READ_PREPROCESSING/01_merge_replicates/{sample}_1.fastq.gz",
     output:
-        R1=results
-        + "01_READ_PREPROCESSING/02_gunzip_reads/{assembly_sample}_R1.fastq",
-        R2=results
-        + "01_READ_PREPROCESSING/02_gunzip_reads/{assembly_sample}_R2.fastq",
-    shell:
-        """
-        gunzip -c {input.R1} > {output.R1}
-        gunzip -c {input.R2} > {output.R2}
-        """
-
-
-# -----------------------------------------------------
-# 03 Clumpify
-# -----------------------------------------------------
-# run clumpify to deduplicate reads
-rule clumpify:
-    input:
-        R1=results
-        + "01_READ_PREPROCESSING/02_gunzip_reads/{assembly_sample}_R1.fastq",
-        R2=results
-        + "01_READ_PREPROCESSING/02_gunzip_reads/{assembly_sample}_R2.fastq",
-    output:
-        R1=results
-        + "01_READ_PREPROCESSING/03_clumpify/{assembly_sample}_R1.fastq",
-        R2=results
-        + "01_READ_PREPROCESSING/03_clumpify/{assembly_sample}_R2.fastq",
-        log=results + "01_READ_PREPROCESSING/03_clumpify/{assembly_sample}.log",
+        results + "01_READ_PREPROCESSING/02_raw_fastqc/{sample}_1_fastqc.html",
     params:
-        extra_args=config["read_preprocessing"]["clumpify_arguments"],
-    log:
-        results + "00_LOGS/01_read_preprocessing_{assembly_sample}.clumpify.log",
+        out_dir=results + "01_READ_PREPROCESSING/02_raw_fastqc/",
     conda:
-        "../envs/clumpify.yml"
+        "../envs/fastqc.yml"
     shell:
         """
-        # run clumpify
-        clumpify.sh \
-        in={input.R1} \
-        in2={input.R2} \
-        out={output.R1} \
-        out2={output.R2} \
-        {params.extra_args} > {output.log} 2>&1
+        # generate fastqc report for forward reads
+        fastqc {input} --outdir {params.out_dir}
+        """
 
-        cp {output.log} {log}
+# Run FASTQC on raw R2 reads
+rule raw_fastqc_R2:
+    input:
+        results
+        + "01_READ_PREPROCESSING/01_merge_replicates/{run}_2.fastq.gz",
+    output:
+        results + "01_READ_PREPROCESSING/02_raw_fastqc/{run}_2_fastqc.html",
+    params:
+        out_dir=results + "01_READ_PREPROCESSING/02_raw_fastqc/",
+    conda:
+        "../envs/fastqc.yml"
+    shell:
+        """
+        # generate fastqc report for reverse reads
+        fastqc {input} --outdir {params.out_dir}
+        """
+
+
+# Combine FASTQC results using multiQC
+rule raw_multiqc:
+    input:
+        expand(results + "01_READ_PREPROCESSING/02_raw_fastqc/{sample}_{read}_fastqc.html", sample=samples, read=["1", "2"]),
+    output:
+        report(
+           results + "01_READ_PREPROCESSING/raw_multiqc_report.html",
+            caption="../report/01_read_preprocessing_analysis.rst",
+            category="Step 01: Read preprocessing",
+        ),
+    params:
+        in_dir=results + "01_READ_PREPROCESSING/02_raw_fastqc/",
+        out_dir=results + "01_READ_PREPROCESSING/single/",
+        out_file=results + "01_READ_PREPROCESSING/single/multiqc_report.html",
+    conda:
+        "../envs/multiqc.yml"
+    shell:
+        """
+        # remove multiqc output
+        rm -f {params.out_file}
+
+        # generate mutliqc report
+        multiqc {params.in_dir} -o {params.out_dir}
+        mv {params.out_file} {output}
+
+        rm -r {params.out_dir}
         """
 
 
 # -----------------------------------------------------
-# 04 KneadData
+# 03 KneadData
 # -----------------------------------------------------
 # build kneaddata bowtie2 database
 rule download_kneaddata_database:
@@ -191,26 +190,22 @@ rule kneaddata:
         resources + "kneaddata/hg37dec_v0.1.rev.1.bt2",
         resources + "kneaddata/hg37dec_v0.1.rev.2.bt2",
         R1=results
-        + "01_READ_PREPROCESSING/03_clumpify/{assembly_sample}_R1.fastq",
+        + "01_READ_PREPROCESSING/01_merge_replicates/{sample}_1.fastq.gz",
         R2=results
-        + "01_READ_PREPROCESSING/03_clumpify/{assembly_sample}_R2.fastq",
+        + "01_READ_PREPROCESSING/01_merge_replicates/{sample}_2.fastq.gz",
     output:
-        log=results + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}.log",
+        log=results + "01_READ_PREPROCESSING/03_kneaddata/{sample}.log",
         R1=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_paired_1.fastq",
+        + "01_READ_PREPROCESSING/03_kneaddata/{sample}_paired_1.fastq",
         R2=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_paired_2.fastq",
-        R1S=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_unmatched_1.fastq",
-        R2S=results
-        + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}_unmatched_2.fastq",
+        + "01_READ_PREPROCESSING/03_kneaddata/{sample}_paired_2.fastq",
     params:
-        output_dir=results + "01_READ_PREPROCESSING/04_kneaddata/",
+        out_dir=results + "01_READ_PREPROCESSING/03_kneaddata/",
         human_db=resources + "kneaddata/",
         extra_args=config["read_preprocessing"]["kneaddata_arguments"],
-        prefix="{assembly_sample}",
+        prefix="{sample}",
     log:
-        results + "00_LOGS/01_read_preprocessing_{assembly_sample}.kneaddata.log",
+        results + "00_LOGS/01_read_preprocessing_{sample}.kneaddata.log",
     conda:
         "../envs/kneaddata.yml"
     threads: config["read_preprocessing"]["kneaddata_threads"]
@@ -218,70 +213,141 @@ rule kneaddata:
         """
         # run kneaddata to quality filter and remove host reads
         kneaddata --input {input.R1} --input {input.R2} \
-        --output {params.output_dir} \
+        --output {params.out_dir} \
         --output-prefix {params.prefix} \
         --reference-db {params.human_db} \
         --threads {threads} \
         {params.extra_args}
 
+        # copy log output to log directory
         cp {output.log} {log}
         """
 
 
 # -----------------------------------------------------
-# Read preprocessing analysis
+# 04 Combine Reads for Coassembly
 # -----------------------------------------------------
-# Determine clumpify read counts
-rule clumpify_read_counts:
-    input:
-        expand(
-            results + "01_READ_PREPROCESSING/03_clumpify/{assembly_sample}.log",
-            assembly_sample=assembly_sample,
-        ),
-    output:
-        results + "01_READ_PREPROCESSING/03_clumpify/combined_read_counts.tsv",
-    conda:
-        "../envs/jupyter.yml"
-    notebook:
-        "../notebooks/01_clumpify_read_counts.py.ipynb"
+def get_sample_reads(coassembly):
+    coassembly_group = list(samples_df[samples_df["assembly"] == coassembly]['sample'])
+    R1 = []
+    R2 = []
+    for sample in coassembly_group:
+        R1.append(results + "01_READ_PREPROCESSING/03_kneaddata/" + sample + "_paired_1.fastq")
+        R2.append(results + "01_READ_PREPROCESSING/03_kneaddata/" + sample + "_paired_2.fastq")
+    dict = {"R1": R1, "R2": R2}
+    return dict
 
-
-# determine read counts using kneaddata utils
-rule kneaddata_read_counts:
+# Combine reads for coassembly
+rule combine_reads_for_coassembly:
     input:
-        expand(
-            results + "01_READ_PREPROCESSING/04_kneaddata/{assembly_sample}.log",
-            assembly_sample=assembly_sample,
-        ),
+        unpack(lambda wildcards: get_sample_reads(wildcards.coassembly)),
     output:
-        results + "01_READ_PREPROCESSING/04_kneaddata/combined_read_counts.tsv",
-    params:
-        log_dir=results + "01_READ_PREPROCESSING/04_kneaddata",
-    conda:
-        "../envs/kneaddata.yml"
+        R1=results + "01_READ_PREPROCESSING/04_combine_coassembly_reads/{coassembly}_coassembly_1.fastq",
+        R2=results + "01_READ_PREPROCESSING/04_combine_coassembly_reads/{coassembly}_coassembly_2.fastq",
     shell:
         """
-        # generate read counts from kneaddata log files
-        kneaddata_read_count_table \
-        --input {params.log_dir} \
-        --output {output}
+        # combine reads for coassembly
+        cat {input.R1} > {output.R1}
+        cat {input.R2} > {output.R2}
         """
 
 
-# Visualize read counts
-rule read_preprocessing_analysis:
+# -----------------------------------------------------
+# 05 Preprocessed FASTQC & MULTIQC
+# -----------------------------------------------------
+# Run FASTQC on preprocessed R1 reads
+rule preprocessed_fastqc_R1_single:
     input:
-        clumpify=results + "01_READ_PREPROCESSING/03_clumpify/combined_read_counts.tsv",
-        kneaddata=results
-        + "01_READ_PREPROCESSING/04_kneaddata/combined_read_counts.tsv",
+        results
+        + "01_READ_PREPROCESSING/03_kneaddata/{sample}_paired_1.fastq",
     output:
-        figure=report(
-            results + "01_READ_PREPROCESSING/read_preprocessing_figure.png",
+        results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/single/{sample}_paired_1_fastqc.html",
+    params:
+        out_dir=results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/single/",
+    conda:
+        "../envs/fastqc.yml"
+    shell:
+        """
+        # generate fastqc report for forward reads
+        fastqc {input} --outdir {params.out_dir}
+        """
+
+# Run FASTQC on preprocessed R1 reads
+rule preprocessed_fastqc_R1_coassembly:
+    input:
+        results + "01_READ_PREPROCESSING/04_combine_coassembly_reads/{coassembly}_1.fastq",
+    output:
+        results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/coassembly/{coassembly}_coassembly_1_fastqc.html",
+    params:
+        out_dir=results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/coassembly/",
+    conda:
+        "../envs/fastqc.yml"
+    shell:
+        """
+        # generate fastqc report for forward reads
+        fastqc {input} --outdir {params.out_dir}
+        """
+
+# Run FASTQC on preprocessed R2 reads
+rule preprocessed_fastqc_R2_single:
+    input:
+        results
+        + "01_READ_PREPROCESSING/03_kneaddata/{sample}_paired_2.fastq",
+    output:
+        results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/single/{sample}_paired_2_fastqc.html",
+    params:
+        out_dir=results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/single/",
+    conda:
+        "../envs/fastqc.yml"
+    shell:
+        """
+        # generate fastqc report for reverse reads
+        fastqc {input} --outdir {params.out_dir}
+        """
+
+# Run FASTQC on preprocessed R1 reads
+rule preprocessed_fastqc_R2_coassembly:
+    input:
+        results + "01_READ_PREPROCESSING/04_combine_coassembly_reads/{coassembly}_2.fastq",
+    output:
+        results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/coassembly/{coassembly}_coassembly_2_fastqc.html",
+    params:
+        out_dir=results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/coassembly/",
+    conda:
+        "../envs/fastqc.yml"
+    shell:
+        """
+        # generate fastqc report for forward reads
+        fastqc {input} --outdir {params.out_dir}
+        """
+
+# Combine FASTQC results using multiQC
+rule preprocessed_multiqc:
+    input:
+        single=expand(results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/single/{sample}_paired_{read}_fastqc.html", sample=samples, read=["1", "2"]),
+        coassembly=expand(results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/coassembly/{coassembly}_coassembly_{read}_fastqc.html", coassembly=coassemblies, read=["1", "2"]),
+    output:
+        report(
+            results + "01_READ_PREPROCESSING/preprocessed_multiqc_report.html",
             caption="../report/01_read_preprocessing_analysis.rst",
             category="Step 01: Read preprocessing",
         ),
-        report=results + "01_READ_PREPROCESSING/read_preprocessing_report.csv",
+    params:
+        in_dir=results + "01_READ_PREPROCESSING/05_preprocessed_fastqc/",
+        out_dir=results + "01_READ_PREPROCESSING/preprocessed/",
+        out_file=results + "01_READ_PREPROCESSING/preprocessed/multiqc_report.html",
     conda:
-        "../envs/jupyter.yml"
-    notebook:
-        "../notebooks/01_read_preprocessing_analysis.py.ipynb"
+        "../envs/multiqc.yml"
+    shell:
+        """
+        # remove multiqc output
+        rm -f {params.out_file}
+
+        combine 
+
+        # generate mutliqc report
+        multiqc {params.in_dir} -o {params.out_dir}
+        mv {params.out_file} {output}
+
+        rm -r {params.out_dir}
+        """
